@@ -1,5 +1,22 @@
 package ca.ualberta.ssrg.movies;
 
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Type;
+
+import org.apache.http.HttpResponse;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.DefaultHttpClient;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonIOException;
+import com.google.gson.JsonSyntaxException;
+import com.google.gson.reflect.TypeToken;
+
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -9,6 +26,7 @@ import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.AdapterView.OnItemLongClickListener;
 import android.widget.ArrayAdapter;
+import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Toast;
 import ca.ualberta.ssrg.androidelasticsearch.R;
@@ -16,6 +34,8 @@ import ca.ualberta.ssrg.movies.es.ESMovieManager;
 import ca.ualberta.ssrg.movies.es.Movie;
 import ca.ualberta.ssrg.movies.es.Movies;
 import ca.ualberta.ssrg.movies.es.MoviesController;
+import ca.ualberta.ssrg.movies.es.data.SearchResponse;
+import ca.ualberta.ssrg.movies.es.data.SimpleSearchCommand;
 
 public class MainActivity extends Activity {
 
@@ -38,11 +58,11 @@ public class MainActivity extends Activity {
 	@Override
 	protected void onStart() {
 		super.onStart();
-
+		
 		movies = new Movies();
 		moviesViewAdapter = new ArrayAdapter<Movie>(this, R.layout.list_item,movies);
 		movieList.setAdapter(moviesViewAdapter);
-		movieManager = new ESMovieManager("");
+
 
 		// Show details when click on a movie
 		movieList.setOnItemClickListener(new OnItemClickListener() {
@@ -102,7 +122,9 @@ public class MainActivity extends Activity {
 	 */
 	public void search(View view) {
 		movies.clear();
-
+		
+		Thread searchThread = new SearchThread();
+		searchThread.start();
 		// TODO: Extract search query from text view
 		
 		// TODO: Run the search thread
@@ -131,8 +153,50 @@ public class MainActivity extends Activity {
 
 
 	class SearchThread extends Thread {
-		// TODO: Implement search thread
-		
+		public void run(){
+			HttpClient httpClient = new DefaultHttpClient();
+			movieManager = new ESMovieManager("");
+			EditText search = (EditText) findViewById(R.id.editText1);
+			HttpPost post = new HttpPost("http://cmput301.softwareprocess.es:8080/testing/movie/_search");
+			Gson gson = new Gson();
+			StringEntity stringEntity = null;
+			String searchString = gson.toJson(new SimpleSearchCommand(search.getText().toString()));
+			try {
+				stringEntity = new StringEntity(searchString);
+			} catch (UnsupportedEncodingException e) {
+				throw new RuntimeException(e);
+			}
+	
+			
+			post.setHeader("Accept", "application/jason");
+			post.setEntity(stringEntity);
+			
+			HttpResponse response;
+			
+			try {
+			  response = httpClient.execute(post);
+			    
+			} catch (ClientProtocolException e){
+				throw new RuntimeException(e);
+				
+			} catch (IOException e){
+				throw new RuntimeException(e);
+			}
+			
+			Type searchResponseType = new TypeToken<SearchResponse<Movie>>(){}.getType();
+			try {
+				SearchResponse<Movie> searchResponse = 
+						gson.fromJson(new InputStreamReader(response.getEntity().getContent()), searchResponseType);
+			} catch (JsonIOException e){
+				throw new RuntimeException(e);
+			} catch (JsonSyntaxException e){
+				throw new RuntimeException(e);
+			} catch (IllegalStateException e){
+				throw new RuntimeException(e);
+			} catch (IOException e){
+				throw new RuntimeException(e);
+			}
+		}
 	}
 
 	
@@ -150,7 +214,6 @@ public class MainActivity extends Activity {
 			// Remove movie from local list
 			for (int i = 0; i < movies.size(); i++) {
 				Movie m = movies.get(i);
-
 				if (m.getId() == movieId) {
 					movies.remove(m);
 					break;
